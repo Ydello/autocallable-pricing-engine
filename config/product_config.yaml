@@ -1,0 +1,49 @@
+# =============================================================================
+# CONFIGURATION DU PRODUIT — Phoenix Autocall mono-sous-jacent
+# TODO : valeurs à ajuster ensemble selon le sous-jacent choisi (EURO STOXX 50 / S&P 500)
+# =============================================================================
+
+underlying:
+  ticker: "^STOXX50E"        # TODO: confirmer ticker yfinance (S&P 500 = ^GSPC)
+  name: "EURO STOXX 50"
+  currency: "EUR"
+
+product:
+  nominal: 1000.0
+  maturity_years: 3
+  observation_frequency: "quarterly"   # quarterly | monthly | semiannual
+  n_observations: 12                   # déduit de maturity_years x frequency, TODO: vérifier cohérence
+
+  # Barrière d'autocall — TODO: définir le step-down exact (liste de 12 valeurs, en % du spot initial)
+  autocall_barrier:
+    type: "step_down"                  # "flat" ou "step_down"
+    initial_level: 1.00                # 100% du spot initial à la 1ère observation
+    step: 0.00                         # décrément par observation, ex. 0.01 = -1%/trimestre — TODO
+    values: null                       # optionnel : liste explicite [1.00, 0.97, 0.94, ...] — TODO
+
+  # Barrière de coupon — TODO: confirmer niveau (souvent 60-70% du spot initial)
+  coupon_barrier:
+    type: "flat"
+    level: 0.70
+
+  # Coupon avec effet mémoire
+  coupon:
+    rate_annual: 0.09                  # 9%/an — TODO: à calibrer/valider par rapport au marché
+    memory_effect: true
+
+  # Barrière de protection du capital (knock-in)
+  capital_protection:
+    knock_in_barrier: 0.60             # 60% du spot initial — TODO
+    observation_type: "at_maturity"    # "at_maturity" (européen) ou "continuous" (américain) — TODO
+
+market:
+  risk_free_rate: null                 # TODO: à calibrer depuis FRED (data_loader.py)
+  dividend_yield: null                 # TODO: à calibrer depuis données de l'indice
+  volatility: null                     # TODO: à calibrer depuis VIX/VSTOXX ou options
+
+simulation:
+  n_paths: 100000
+  random_seed: 42
+  variance_reduction: "antithetic"     # "none" | "antithetic" | "control_variate"
+
+pricing_date: null                     # TODO: date de valorisation (format YYYY-MM-DD)

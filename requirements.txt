@@ -1,0 +1,10 @@
+numpy>=1.26
+pandas>=2.2
+scipy>=1.12
+matplotlib>=3.8
+plotly>=5.20
+yfinance>=0.2.40
+pandas-datareader>=0.10
+pyyaml>=6.0
+pytest>=8.0
+jupyter>=1.0
