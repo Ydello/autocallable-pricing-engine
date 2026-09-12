@@ -4,7 +4,7 @@
 # =============================================================================
 
 underlying:
-  ticker: "^STOXX50E"        # TODO: confirmer ticker yfinance (S&P 500 = ^GSPC)
+  ticker: "^GSPC"        # TODO: confirmer ticker yfinance (S&P 500 = ^GSPC)
   name: "EURO STOXX 50"
   currency: "EUR"
 

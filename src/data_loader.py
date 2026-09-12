@@ -18,7 +18,7 @@ from datetime import date
 from typing import Optional
 
 import pandas as pd
-
+import yfinance as yf
 
 @dataclass
 class MarketDataBundle:
@@ -52,34 +52,37 @@ def fetch_underlying_history(
     -------
     pd.DataFrame
         Historique avec au moins les colonnes ["Date", "Close"]
-
-    TODO : implémenter l'appel yfinance réel (import yfinance as yf ; yf.download(...))
-           puis nettoyer (valeurs manquantes, jours fériés, etc.)
     """
-    raise NotImplementedError(
-        "TODO: implémenter la récupération yfinance. "
-        "Squelette prêt, à remplir ensemble avec le ticker définitif."
-    )
+    data = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
+    
+    if data.empty:
+        raise ValueError(f"Aucune donnée récupérée pour le ticker '{ticker}'.")
+    
+    # yfinance renvoie parfois un MultiIndex de colonnes (Close, ticker) même
+    # pour un seul ticker selon la version installée -> on aplatit si besoin.
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
+    data = data.reset_index()[["Date", "Close"]].dropna()
+    data = data.sort_values("Date").reset_index(drop=True)
+    return data
 
 
 def fetch_risk_free_rate(series_id: str, start: str, end: Optional[str] = None) -> float:
+    import pandas_datareader.data as web
     """
     Récupère un taux sans risque depuis FRED (via pandas-datareader ou API FRED directe).
 
-    Parameters
-    ----------
-    series_id : str
-        Identifiant de la série FRED (ex. "DGS3MO", "DGS1", "ECBESTRVOLWGTTRMDMNRT")
-
-    Returns
-    -------
-    float
-        Dernier taux disponible sur la période, en décimal (ex. 0.035 pour 3.5%)
-
-    TODO : implémenter l'appel FRED réel + choisir la maturité de taux
-           cohérente avec l'horizon du produit (3 ans -> taux 3 ans si dispo)
     """
-    raise NotImplementedError("TODO: implémenter l'accès FRED.")
+    end = end or date.today().strftime("%Y-%m-%d")
+    series = web.DataReader(series_id, "fred", start, end).dropna()
+
+    if series.empty:
+        raise ValueError(f"Aucune donnée FRED récupérée pour la série '{series_id}'.")
+
+    last_value = float(series.iloc[-1, 0])
+    # Les séries FRED de type DGS* sont exprimées en % (ex. 4.33 pour 4.33%)
+    return last_value / 100.0
 
 
 def fetch_volatility_proxy(index_name: str, start: str, end: Optional[str] = None) -> float:
@@ -90,19 +93,42 @@ def fetch_volatility_proxy(index_name: str, start: str, end: Optional[str] = Non
     -------
     float
         Volatilité annualisée en décimal (ex. 0.18 pour 18%)
-
-    TODO : décider si on utilise directement l'indice de vol (simple mais approximatif)
-           ou si on reconstruit une vol implicite depuis une chaîne d'options
-           (plus précis mais plus complexe — cf. market_calibration.py)
     """
-    raise NotImplementedError("TODO: implémenter la récupération du proxy de volatilité.")
+    data = yf.download(index_name, start=start, end=end, auto_adjust=True, progress=False)
+
+    if data.empty:
+        raise ValueError(f"Aucune donnée récupérée pour l'indice de vol '{index_name}'.")
+
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
+    last_value = float(data["Close"].dropna().iloc[-1])
+    # Le VIX est coté directement en points de %, ex. 16.5 -> 0.165
+    return last_value / 100.0
 
 
 def build_market_data_bundle(config: dict) -> MarketDataBundle:
     """
     Point d'entrée principal : construit le bundle complet de données de marché
     à partir de la configuration produit.
-
-    TODO : orchestrer les trois fonctions ci-dessus une fois chacune finalisée.
     """
-    raise NotImplementedError("TODO: assembler le bundle une fois les sous-fonctions prêtes.")
+    ticker = config["underlying"]["ticker"]
+    start = config.get("data", {}).get("history_start", "2015-01-01")
+    end = config.get("pricing_date")  # None -> yfinance va jusqu'à aujourd'hui
+    vol_ticker = config.get("data", {}).get("vol_proxy_ticker", "^VIX")
+    rate_series_id = config.get("data", {}).get("risk_free_series_id", "DGS3MO")
+
+    spot_history = fetch_underlying_history(ticker, start=start, end=end)
+    spot_price = float(spot_history["Close"].iloc[-1])
+    pricing_date = pd.to_datetime(spot_history["Date"].iloc[-1]).date()
+
+    risk_free_rate = fetch_risk_free_rate(rate_series_id, start=start, end=end)
+    implied_vol_proxy = fetch_volatility_proxy(vol_ticker, start=start, end=end)
+    return MarketDataBundle(
+        spot_history=spot_history,
+        spot_price=spot_price,
+        pricing_date=pricing_date,
+        risk_free_rate=risk_free_rate,
+        dividend_yield=None,  # TODO: brancher estimate_dividend_yield() séparément
+        implied_vol_proxy=implied_vol_proxy,
+    )
